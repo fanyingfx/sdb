@@ -1,4 +1,4 @@
-add_library(libsdb process.cpp)
+add_library(libsdb process.cpp pipe.cpp registers.cpp)
 add_library(sdb::libsdb ALIAS libsdb)
 
 set_target_properties(

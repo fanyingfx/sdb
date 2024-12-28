@@ -36,3 +36,4 @@ out
 build/
 vcpkg_installed/
 .vscode/settings.json
+.cache/
