@@ -1,14 +1,18 @@
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
 #include <fstream>
+#include <libsdb/bit.hpp>
 #include <libsdb/error.hpp>
+#include <libsdb/pipe.hpp>
 #include <libsdb/process.hpp>
 #include <signal.h>
 #include <sys/types.h>
+
 using namespace sdb;
 namespace {
 bool process_exists(pid_t pid) {
   auto ret = kill(pid, 0);
-  return ret != -1 && errno != ESRCH;
+  return ret != -1 and errno != ESRCH;
 }
 char get_process_status(pid_t pid) {
   std::ifstream state("/proc/" + std::to_string(pid) + "/stat");
@@ -48,4 +52,66 @@ TEST_CASE("process::resume already terminated", "[process]") {
   proc->resume();
   proc->wait_on_signal();
   REQUIRE_THROWS_AS(proc->resume(), error);
+}
+TEST_CASE("Write register works", "[register]") {
+  bool close_on_exec = false;
+  sdb::pipe channel(close_on_exec);
+  auto proc = process::launch("targets/reg_write", true, channel.get_write());
+  channel.close_write();
+
+  proc->resume();
+  proc->wait_on_signal();
+
+  auto &regs = proc->get_registers();
+
+  regs.write_by_id(register_id::rsi, 0xcafecafe);
+  proc->resume();
+  proc->wait_on_signal();
+  auto output = channel.read();
+  REQUIRE(to_string_view(output) == "0xcafecafe");
+
+  regs.write_by_id(register_id::mm0, 0xba5eba11);
+  proc->resume();
+  proc->wait_on_signal();
+  output = channel.read();
+  REQUIRE(to_string_view(output) == "0xba5eba11");
+
+  regs.write_by_id(register_id::xmm0, 42.24);
+  proc->resume();
+  proc->wait_on_signal();
+  output = channel.read();
+  REQUIRE(to_string_view(output) == "42.24");
+
+  regs.write_by_id(register_id::st0, 42.24l);
+  regs.write_by_id(register_id::fsw, std::uint16_t{0b0011100000000000});
+  regs.write_by_id(register_id::ftw, std::uint16_t{0b0011111111111111});
+  proc->resume();
+  proc->wait_on_signal();
+  output = channel.read();
+  REQUIRE(to_string_view(output) == "42.24");
+}
+TEST_CASE("Read register works", "[register]") {
+  auto proc = process::launch("targets/reg_read");
+  auto &regs = proc->get_registers();
+
+  proc->resume();
+  proc->wait_on_signal();
+  REQUIRE(regs.read_by_id_as<std::uint64_t>(register_id::r13) == 0xcafecafe);
+
+  proc->resume();
+  proc->wait_on_signal();
+  REQUIRE(regs.read_by_id_as<std::uint8_t>(register_id::r13b) == 42);
+
+  proc->resume();
+  proc->wait_on_signal();
+  REQUIRE(regs.read_by_id_as<byte64>(register_id::mm0) ==
+          to_byte64(0xba5eba11ull));
+
+  proc->resume();
+  proc->wait_on_signal();
+  REQUIRE(regs.read_by_id_as<byte128>(register_id::xmm0) == to_byte128(64.125));
+
+  proc->resume();
+  proc->wait_on_signal();
+  REQUIRE(regs.read_by_id_as<long double>(register_id::st0) == 64.125L);
 }

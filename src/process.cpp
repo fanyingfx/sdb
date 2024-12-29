@@ -4,6 +4,7 @@
 #include <libsdb/error.hpp>
 #include <libsdb/pipe.hpp>
 #include <libsdb/process.hpp>
+#include <optional>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/user.h>
@@ -16,8 +17,9 @@ void exit_with_perror(sdb::pipe &channel, std::string const &prefix) {
   exit(-1);
 }
 } // namespace
-std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path,
-                                                   bool debug) {
+std::unique_ptr<sdb::process>
+sdb::process::launch(std::filesystem::path path, bool debug,
+                     std::optional<int> stdout_replacement) {
   pipe channel(/*close_on_exec=*/true);
   pid_t pid;
   if ((pid = fork()) < 0) {
@@ -25,7 +27,12 @@ std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path,
   }
   if (pid == 0) {
     channel.close_read();
-    if (debug && ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
+    if (stdout_replacement) {
+      if (dup2(*stdout_replacement, STDOUT_FILENO) < 0) {
+        exit_with_perror(channel, "stdout replacement failed");
+      }
+    }
+    if (debug and ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
       exit_with_perror(channel, "Tracing failed");
     }
     if (execlp(path.c_str(), path.c_str(), nullptr) < 0) {
@@ -103,7 +110,7 @@ sdb::stop_reason sdb::process::wait_on_signal() {
   }
   stop_reason reason(wait_status);
   state_ = reason.reason;
-  if(is_attached_ && state_ == process_state::stopped){
+  if (is_attached_ and state_ == process_state::stopped) {
     read_all_registers();
   }
   return reason;
@@ -127,19 +134,18 @@ void sdb::process::read_all_registers() {
   }
 }
 void sdb::process::write_user_area(std::size_t offset, std::uint64_t data) {
-  if (ptrace(PTRACE_POKEDATA, pid_, offset, data) < 0) {
+  if (ptrace(PTRACE_POKEUSER, pid_, offset, data) < 0) {
     error::send_errno("Could not write to user area");
   }
 }
-void sdb::process::write_fprs(const user_fpregs_struct& fprs){
-  if(ptrace(PTRACE_SETFPREGS,pid_,nullptr,&fprs)<0){
+void sdb::process::write_fprs(const user_fpregs_struct &fprs) {
+  if (ptrace(PTRACE_SETFPREGS, pid_, nullptr, &fprs) < 0) {
     error::send_errno("Could not write floating point registers");
   }
-
 }
-void sdb::process::write_gprs(const user_regs_struct& gprs){
+void sdb::process::write_gprs(const user_regs_struct &gprs) {
 
-  if(ptrace(PTRACE_SETREGS,pid_,nullptr,&gprs)<0){
+  if (ptrace(PTRACE_SETREGS, pid_, nullptr, &gprs) < 0) {
     error::send_errno("Could not write general purpose registers");
   }
 }

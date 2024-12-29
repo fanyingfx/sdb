@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <iostream>
 #include <libsdb/bit.hpp>
 #include <libsdb/process.hpp>
@@ -36,9 +37,9 @@ sdb::registers::value sdb::registers::read(const register_info &info) const {
       return from_bytes<std::uint8_t>(bytes + info.offset);
     case 2:
       return from_bytes<std::uint16_t>(bytes + info.offset);
-    case 3:
-      return from_bytes<std::uint32_t>(bytes + info.offset);
     case 4:
+      return from_bytes<std::uint32_t>(bytes + info.offset);
+    case 8:
       return from_bytes<std::uint64_t>(bytes + info.offset);
     default:
       sdb::error::send("Unexpected register size");
@@ -47,7 +48,7 @@ sdb::registers::value sdb::registers::read(const register_info &info) const {
     return from_bytes<double>(bytes + info.offset);
   } else if (info.format == register_format::long_double) {
     return from_bytes<long double>(bytes + info.offset);
-  } else if (info.format == register_format::vector && info.size == 8) {
+  } else if (info.format == register_format::vector and info.size == 8) {
     return from_bytes<byte64>(bytes + info.offset);
   } else {
     return from_bytes<byte128>(bytes + info.offset);

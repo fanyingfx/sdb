@@ -20,7 +20,7 @@ DEFINE_REGISTER macro defined"
   DEFINE_REGISTER(name, -1, 1, GPR_OFFSET(super) + 1, register_type::sub_gpr,  \
                   register_format::uint)
 #define DEFINE_GPR_8L(name, super)                                             \
-  DEFINE_REGISTER(name, -1, 2, GPR_OFFSET(super), register_type::sub_gpr,      \
+  DEFINE_REGISTER(name, -1, 1, GPR_OFFSET(super), register_type::sub_gpr,      \
                   register_format::uint)
 DEFINE_GPR_64(rax, 0), DEFINE_GPR_64(rdx, 1), DEFINE_GPR_64(rcx, 2),
     DEFINE_GPR_64(rbx, 3), DEFINE_GPR_64(rsi, 4), DEFINE_GPR_64(rdi, 5),

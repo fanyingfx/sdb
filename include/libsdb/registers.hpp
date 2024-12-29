@@ -1,10 +1,11 @@
 #ifndef SDB_REGISTERS_HPP
 #define SDB_REGISTERS_HPP
 
+#include <iostream>
 #include <libsdb/register_info.hpp>
-#include <variant>
 #include <libsdb/types.hpp>
 #include <sys/user.h>
+#include <variant>
 namespace sdb {
 
 class process;
@@ -21,7 +22,9 @@ public:
   void write(const register_info &info, value val);
 
   template <class T> T read_by_id_as(register_id id) const {
-    return std::get<T>(read(sdb::register_info_by_id(id)));
+    auto info = sdb::register_info_by_id(id);
+    auto v = read(info);
+    return std::get<T>(v);
   }
   void write_by_id(register_id id, value val) {
     write(sdb::register_info_by_id(id), val);
