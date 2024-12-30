@@ -15,16 +15,14 @@
 #include <sys/wait.h>
 #include <unistd.h>
 namespace {
-void exit_with_perror(sdb::pipe& channel, std::string const& prefix)
-{
+void exit_with_perror(sdb::pipe& channel, std::string const& prefix) {
     auto message = prefix + ": " + std::strerror(errno);
     channel.write(reinterpret_cast<std::byte*>(message.data()), message.size());
     exit(-1);
 }
 }   // namespace
 std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path, bool debug,
-                                                   std::optional<int> stdout_replacement)
-{
+                                                   std::optional<int> stdout_replacement) {
     pipe  channel(/*close_on_exec=*/true);
     pid_t pid;
     if ((pid = fork()) < 0) {
@@ -60,8 +58,7 @@ std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path, b
     return proc;
 }
 
-std::unique_ptr<sdb::process> sdb::process::attach(pid_t pid)
-{
+std::unique_ptr<sdb::process> sdb::process::attach(pid_t pid) {
     if (pid == 0) {
         error::send("Invalid PID");
     }
@@ -72,8 +69,7 @@ std::unique_ptr<sdb::process> sdb::process::attach(pid_t pid)
     proc->wait_on_signal();
     return proc;
 }
-sdb::process::~process()
-{
+sdb::process::~process() {
     if (pid_ != 0) {
         int status;
         if (is_attached_) {
@@ -90,30 +86,39 @@ sdb::process::~process()
         }
     }
 }
-void sdb::process::resume()
-{
+void sdb::process::resume() {
+    auto pc = get_pc();
+    if (breakpoint_sites_.enabled_stoppoint_at_address(pc)) {
+        auto& bp = breakpoint_sites_.get_by_address(pc);
+        bp.disable();
+        if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
+            error::send_errno("Failedto sigle step");
+        }
+        int wait_status;
+        if (waitpid(pid_, &wait_status, 0) < 0) {
+            error::send_errno("waitpid failed");
+        }
+        bp.enable();
+    }
+
     if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0) {
         error::send_errno("Could not resume");
     }
     state_ = process_state::running;
 }
-sdb::stop_reason::stop_reason(int wait_status)
-{
+sdb::stop_reason::stop_reason(int wait_status) {
     if (WIFEXITED(wait_status)) {
         reason = process_state::exited;
         info   = WEXITSTATUS(wait_status);
-    }
-    else if (WIFSIGNALED(wait_status)) {
+    } else if (WIFSIGNALED(wait_status)) {
         reason = process_state::terminated;
         info   = WTERMSIG(wait_status);
-    }
-    else if (WIFSTOPPED(wait_status)) {
+    } else if (WIFSTOPPED(wait_status)) {
         reason = process_state::stopped;
         info   = WSTOPSIG(wait_status);
     }
 }
-sdb::stop_reason sdb::process::wait_on_signal()
-{
+sdb::stop_reason sdb::process::wait_on_signal() {
     int wait_status;
     int options = 0;
     if (waitpid(pid_, &wait_status, options) < 0) {
@@ -123,11 +128,14 @@ sdb::stop_reason sdb::process::wait_on_signal()
     state_ = reason.reason;
     if (is_attached_ and state_ == process_state::stopped) {
         read_all_registers();
+        auto instr_begin = get_pc() - 1;
+        if (reason.info == SIGTRAP and breakpoint_sites_.enabled_stoppoint_at_address(instr_begin)) {
+            set_pc(instr_begin);
+        }
     }
     return reason;
 }
-void sdb::process::read_all_registers()
-{
+void sdb::process::read_all_registers() {
     if (ptrace(PTRACE_GETREGS, pid_, nullptr, &get_registers().data_.regs) < 0) {
         error::send_errno("Could not read GPR registers");
     }
@@ -143,29 +151,42 @@ void sdb::process::read_all_registers()
         get_registers().data_.u_debugreg[i] = data;
     }
 }
-void sdb::process::write_user_area(std::size_t offset, std::uint64_t data)
-{
+void sdb::process::write_user_area(std::size_t offset, std::uint64_t data) {
     if (ptrace(PTRACE_POKEUSER, pid_, offset, data) < 0) {
         error::send_errno("Could not write to user area");
     }
 }
-void sdb::process::write_fprs(const user_fpregs_struct& fprs)
-{
+void sdb::process::write_fprs(const user_fpregs_struct& fprs) {
     if (ptrace(PTRACE_SETFPREGS, pid_, nullptr, &fprs) < 0) {
         error::send_errno("Could not write floating point registers");
     }
 }
-void sdb::process::write_gprs(const user_regs_struct& gprs)
-{
+void sdb::process::write_gprs(const user_regs_struct& gprs) {
 
     if (ptrace(PTRACE_SETREGS, pid_, nullptr, &gprs) < 0) {
         error::send_errno("Could not write general purpose registers");
     }
 }
-sdb::breakpoint_site& sdb::process::create_breakpoint_site(virt_addr address)
-{
+sdb::breakpoint_site& sdb::process::create_breakpoint_site(virt_addr address) {
     if (breakpoint_sites_.contains_address(address)) {
         error::send("Breakpoint site already created at address " + std::to_string(address.addr()));
     }
     return breakpoint_sites_.push(std::unique_ptr<breakpoint_site>(new breakpoint_site(*this, address)));
+}
+sdb::stop_reason sdb::process::step_instruction() {
+    std::optional<breakpoint_site*> to_reenable;
+    auto                            pc = get_pc();
+    if (breakpoint_sites_.enabled_stoppoint_at_address(pc)) {
+        auto& bp = breakpoint_sites_.get_by_address(pc);
+        bp.disable();
+        to_reenable = &bp;
+    }
+    if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
+        error::send_errno("Could not single step");
+    }
+    auto reason = wait_on_signal();
+    if (to_reenable) {
+        to_reenable.value()->enable();
+    }
+    return reason;
 }

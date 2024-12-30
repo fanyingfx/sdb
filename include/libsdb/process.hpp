@@ -13,21 +13,13 @@
 #include <vector>
 
 namespace sdb {
-enum class process_state
-{
-    stopped,
-    running,
-    exited,
-    terminated
-};
-struct stop_reason
-{
+enum class process_state { stopped, running, exited, terminated };
+struct stop_reason {
     stop_reason(int wait_status);
     process_state reason;
     std::uint8_t  info;
 };
-class process
-{
+class process {
 public:
     ~process();
     process()                          = delete;
@@ -47,9 +39,11 @@ public:
     void                            write_fprs(const user_fpregs_struct& fprs);
     void                            write_gprs(const user_regs_struct& gprs);
     breakpoint_site&                create_breakpoint_site(virt_addr address);
+    void set_pc(virt_addr address) { get_registers().write_by_id(register_id::rip, address.addr()); }
 
     stoppoint_collection<breakpoint_site>&       breakpoint_sites() { return breakpoint_sites_; }
     const stoppoint_collection<breakpoint_site>& breakpoint_sites() const { return breakpoint_sites_; }
+    sdb::stop_reason step_instruction();
 
 private:
     pid_t         pid_              = 0;
@@ -60,8 +54,7 @@ private:
         : pid_{pid}
         , terminate_on_end_{terminate_on_end}
         , is_attached_(is_attached)
-        , registers_(new registers(*this))
-    {}
+        , registers_(new registers(*this)) {}
     void                                  read_all_registers();
     std::unique_ptr<registers>            registers_;
     stoppoint_collection<breakpoint_site> breakpoint_sites_;

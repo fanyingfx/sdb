@@ -5,8 +5,7 @@
 #include <libsdb/process.hpp>
 #include <sys/ptrace.h>
 namespace {
-auto get_next_id()
-{
+auto get_next_id() {
 
     static sdb::breakpoint_site::id_type id = 0;
     return ++id;
@@ -16,12 +15,10 @@ sdb::breakpoint_site::breakpoint_site(process& proc, virt_addr address)
     : process_{&proc}
     , address_{address}
     , is_enabled_{false}
-    , saved_data_{}
-{
+    , saved_data_{} {
     id_ = get_next_id();
 }
-void sdb::breakpoint_site::enable()
-{
+void sdb::breakpoint_site::enable() {
     if (is_enabled_) return;
 
     errno = 0;
@@ -41,8 +38,7 @@ void sdb::breakpoint_site::enable()
     }
     is_enabled_ = true;
 }
-void sdb::breakpoint_site::disable()
-{
+void sdb::breakpoint_site::disable() {
     if (!is_enabled_) return;
 
     errno              = 0;

@@ -9,8 +9,7 @@
 namespace sdb {
 
 class process;
-class registers
-{
+class registers {
 public:
     registers()                            = delete;
     registers(const registers&)            = delete;
@@ -20,8 +19,7 @@ public:
     value read(const register_info& info) const;
     void  write(const register_info& info, value val);
 
-    template<class T> T read_by_id_as(register_id id) const
-    {
+    template<class T> T read_by_id_as(register_id id) const {
         auto info = sdb::register_info_by_id(id);
         auto v    = read(info);
         return std::get<T>(v);
@@ -31,8 +29,7 @@ public:
 private:
     friend process;
     registers(process& proc)
-        : proc_(&proc)
-    {}
+        : proc_(&proc) {}
 
     user     data_;
     process* proc_;

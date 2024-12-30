@@ -7,8 +7,7 @@
 
 namespace sdb {
 class process;
-class breakpoint_site
-{
+class breakpoint_site {
 public:
     breakpoint_site()                                  = delete;
     breakpoint_site(const breakpoint_site&)            = delete;

@@ -3,8 +3,7 @@
 #include <cstddef>
 #include <vector>
 namespace sdb {
-class pipe
-{
+class pipe {
 public:
     explicit pipe(bool close_on_exec);
     ~pipe();
